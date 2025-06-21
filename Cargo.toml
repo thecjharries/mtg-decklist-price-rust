@@ -4,3 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+scryfall = "0.21.0"
+tokio = { version = "1.45.1", features = ["rt-multi-thread", "macros"] }
