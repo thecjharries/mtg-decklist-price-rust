@@ -1,19 +1,18 @@
-use scryfall::{Card, search::prelude::*};
+use governor::{Quota, RateLimiter};
+use lazy_static::lazy_static;
+use regex::Regex;
+use scryfall::{Card, Error, search::prelude::*};
+use std::time::Duration;
 
-lazy_static::lazy_static! {
-    static ref CARD_NAME_PATTERN: regex::Regex = regex::Regex::new(r"(?i)^(?P<count>\d+)\s+(?P<name>.+?)\s*?$").unwrap();
+lazy_static! {
+    static ref CARD_NAME_PATTERN: Regex =
+        Regex::new(r"(?i)^(?P<count>\d+)\s+(?P<name>.+?)\s*?$").unwrap();
 }
 
 #[tokio::main]
 #[cfg(not(tarpaulin_include))]
 async fn main() {
-    match find_cheapest_printing("Mountainqq").await {
-        Some(card) => println!(
-            "The cheapest price for Mountain is: ${}",
-            card.prices.usd.unwrap().parse::<f64>().unwrap()
-        ),
-        None => println!("No price found for Mountain"),
-    }
+    print!("whoops")
 }
 
 fn sort_raw_card_list(cards: String) -> Vec<String> {
@@ -52,7 +51,7 @@ fn validate_card_list(entries: &[&str]) -> Result<Vec<(u32, String)>, String> {
     Ok(valid_entries)
 }
 
-async fn find_cheapest_printing(card_name: &str) -> Option<Card> {
+async fn find_cheapest_printing(card_name: &str) -> Result<Card, Error> {
     let query = Query::And(vec![
         exact(card_name),
         not(PrintingIs::Digital),
@@ -65,11 +64,47 @@ async fn find_cheapest_printing(card_name: &str) -> Option<Card> {
         .variations(false)
         .unique(UniqueStrategy::Prints);
 
-    let mut results = search_options.search().await.ok()?;
+    let mut results = search_options.search().await?;
     match results.next().await {
-        Some(Ok(card)) => Some(card),
-        _ => None,
+        Some(card) => card,
+        None => Err(Error::Other(format!("No price found for {}", card_name))),
     }
+}
+
+async fn find_cheapest_printing_of_list(
+    cards: Vec<(u32, String)>,
+    rate_milliseconds: u64,
+) -> Result<Vec<(u32, Card)>, Error> {
+    let mut cheapest_cards = Vec::new();
+    let rate_limiter =
+        RateLimiter::direct(Quota::with_period(Duration::from_millis(rate_milliseconds)).unwrap());
+    for (count, card_name) in cards {
+        rate_limiter.until_ready().await;
+        match find_cheapest_printing(&card_name).await {
+            Ok(card) => {
+                cheapest_cards.push((count, card));
+            }
+            Err(err) => {
+                eprintln!("Error finding card {}: {}", card_name, err);
+            }
+        }
+    }
+    Ok(cheapest_cards)
+}
+
+async fn build_decklist(raw_card_list: String, rate_milliseconds: u64) -> Result<Vec<(u32, Card)>, Error> {
+    let sorted_cards = sort_raw_card_list(raw_card_list);
+    let entries: Vec<&str> = sorted_cards.iter().map(|s| s.as_str()).collect();
+    let valid_entries = validate_card_list(&entries).map_err(|err| Error::Other(err))?;
+    find_cheapest_printing_of_list(valid_entries, rate_milliseconds).await
+}
+
+fn compute_decklist_price(decklist: &[(u32, Card)]) -> f64 {
+    decklist.iter().fold(0.0, |acc, (count, card)| {
+        acc + card.prices.usd.as_ref().map_or(0.0, |price| {
+            price.parse::<f64>().unwrap_or(0.0) * (*count as f64)
+        })
+    })
 }
 
 #[cfg(test)]
@@ -79,17 +114,17 @@ mod tests {
     #[tokio::test]
     async fn test_find_cheapest_printing() {
         let printing = find_cheapest_printing("mountain").await;
-        assert!(printing.is_some());
+        assert!(printing.is_ok());
         match printing {
-            Some(card) => assert!(card.prices.usd.unwrap().parse::<f64>().unwrap() > 0.0),
-            None => panic!("Expected a price for the card"),
+            Ok(card) => assert!(card.prices.usd.unwrap().parse::<f64>().unwrap() > 0.0),
+            Err(_) => panic!("Expected a price for the card"),
         }
     }
 
     #[tokio::test]
     async fn test_find_cheapest_printing_nonexistent() {
         let printing = find_cheapest_printing("NonExistentCard").await;
-        assert!(printing.is_none());
+        assert!(printing.is_err());
     }
 
     #[test]
@@ -347,5 +382,70 @@ mod tests {
         let invalid_entries = vec!["3 Mountain", "Island", "1 Plains"];
         let result = validate_card_list(&invalid_entries);
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_find_cheapest_printing_of_list() {
+        let cards = vec![
+            (3, "Mountain".to_string()),
+            (2, "Island".to_string()),
+            (1, "Plains".to_string()),
+        ];
+        let result = find_cheapest_printing_of_list(cards, 200).await;
+        assert!(result.is_ok());
+        let cheapest_cards = result.unwrap();
+        assert_eq!(cheapest_cards.len(), 3);
+        for (count, card) in cheapest_cards {
+            assert!(
+                card.prices.usd.is_some(),
+                "Card {} should have a price",
+                card.name
+            );
+            assert!(
+                card.prices.usd.unwrap().parse::<f64>().unwrap() > 0.0,
+                "Card {} should have a positive price",
+                card.name
+            );
+            assert!(
+                vec!["Mountain", "Island", "Plains"].contains(&card.name.as_str()),
+                "Card name should be one of the expected names"
+            );
+            assert!(
+                count > 0,
+                "Count should be greater than 0 for card {}",
+                card.name
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_build_decklist() {
+        let raw_card_list = "3 Mountain\n2 Island\n1 Plains".to_string();
+        let result = build_decklist(raw_card_list, 200).await;
+        assert!(result.is_ok());
+        let decklist = result.unwrap();
+        assert_eq!(decklist.len(), 3);
+        for (count, card) in decklist {
+            assert!(
+                card.prices.usd.is_some(),
+                "Card {} should have a price",
+                card.name
+            );
+            assert!(
+                count > 0,
+                "Count should be greater than 0 for card {}",
+                card.name
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_compute_decklist_price() {
+        let raw_card_list = "3 Mountain\n2 Island\n1 Plains".to_string();
+        let result = build_decklist(raw_card_list, 200).await;
+        assert!(result.is_ok());
+        let decklist = result.unwrap();
+        let total_price = compute_decklist_price(&decklist);
+        assert!(total_price > 0.0, "Total price should be greater than 0.0");
     }
 }
