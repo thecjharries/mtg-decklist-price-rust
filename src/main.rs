@@ -1,5 +1,9 @@
 use scryfall::{Card, search::prelude::*};
 
+lazy_static::lazy_static! {
+    static ref CARD_NAME_PATTERN: regex::Regex = regex::Regex::new(r"(?i)^(?P<count>\d+)\s+(?P<name>.+?)\s*?$").unwrap();
+}
+
 #[tokio::main]
 #[cfg(not(tarpaulin_include))]
 async fn main() {
@@ -20,6 +24,32 @@ fn sort_raw_card_list(cards: String) -> Vec<String> {
         .collect();
     card_list.sort();
     card_list
+}
+
+fn validate_card_list_entry(entry: &str) -> Result<(u32, String), String> {
+    if let Some(caps) = CARD_NAME_PATTERN.captures(entry) {
+        let count = caps
+            .name("count")
+            .unwrap()
+            .as_str()
+            .parse::<u32>()
+            .map_err(|_| format!("Invalid count in entry: {}", entry))?;
+        let name = caps.name("name").unwrap().as_str().trim().to_string();
+        Ok((count, name))
+    } else {
+        Err(format!("Invalid card entry format: {}", entry))
+    }
+}
+
+fn validate_card_list(entries: &[&str]) -> Result<Vec<(u32, String)>, String> {
+    let mut valid_entries = Vec::new();
+    for entry in entries {
+        match validate_card_list_entry(entry) {
+            Ok(valid_entry) => valid_entries.push(valid_entry),
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(valid_entries)
 }
 
 async fn find_cheapest_printing(card_name: &str) -> Option<Card> {
@@ -264,5 +294,58 @@ mod tests {
         ];
         let sorted = sort_raw_card_list(input.to_string());
         assert_eq!(sorted, expected);
+    }
+
+    #[test]
+    fn test_validate_card_list_entry() {
+        let entry = "3 Mountain";
+        let result = validate_card_list_entry(entry);
+        assert!(result.is_ok());
+        let (count, name) = result.unwrap();
+        assert_eq!(count, 3);
+        assert_eq!(name, "Mountain");
+
+        let invalid_entry = "Mountain 3";
+        let result = validate_card_list_entry(invalid_entry);
+        assert!(result.is_err());
+
+        let empty_entry = "";
+        let result = validate_card_list_entry(empty_entry);
+        assert!(result.is_err());
+
+        let malformed_entry = "3";
+        let result = validate_card_list_entry(malformed_entry);
+        assert!(result.is_err());
+
+        let no_count_entry = "Mountain";
+        let result = validate_card_list_entry(no_count_entry);
+        assert!(result.is_err());
+
+        let whitespace_entry = "   ";
+        let result = validate_card_list_entry(whitespace_entry);
+        assert!(result.is_err());
+
+        let float_entry = "3.0 Mountain";
+        let result = validate_card_list_entry(float_entry);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_card_list() {
+        let entries = vec!["3 Mountain", "2 Island", "1 Plains"];
+        let result = validate_card_list(&entries);
+        assert!(result.is_ok());
+        let valid_entries = result.unwrap();
+        assert_eq!(valid_entries.len(), 3);
+        assert_eq!(valid_entries[0].0, 3);
+        assert_eq!(valid_entries[0].1, "Mountain");
+        assert_eq!(valid_entries[1].0, 2);
+        assert_eq!(valid_entries[1].1, "Island");
+        assert_eq!(valid_entries[2].0, 1);
+        assert_eq!(valid_entries[2].1, "Plains");
+
+        let invalid_entries = vec!["3 Mountain", "Island", "1 Plains"];
+        let result = validate_card_list(&invalid_entries);
+        assert!(result.is_err());
     }
 }
