@@ -83,6 +83,14 @@ async fn find_cheapest_printing_of_list(
     Ok(cheapest_cards)
 }
 
+async fn build_decklist(raw_card_list: String) -> Result<Vec<(u32, Card)>, Error> {
+    let sorted_cards = sort_raw_card_list(raw_card_list);
+    let entries: Vec<&str> = sorted_cards.iter().map(|s| s.as_str()).collect();
+    let valid_entries = validate_card_list(&entries).map_err(|err| Error::Other(err))?;
+
+    find_cheapest_printing_of_list(valid_entries).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -385,6 +393,27 @@ mod tests {
             assert!(
                 vec!["Mountain", "Island", "Plains"].contains(&card.name.as_str()),
                 "Card name should be one of the expected names"
+            );
+            assert!(
+                count > 0,
+                "Count should be greater than 0 for card {}",
+                card.name
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_build_decklist() {
+        let raw_card_list = "3 Mountain\n2 Island\n1 Plains".to_string();
+        let result = build_decklist(raw_card_list).await;
+        assert!(result.is_ok());
+        let decklist = result.unwrap();
+        assert_eq!(decklist.len(), 3);
+        for (count, card) in decklist {
+            assert!(
+                card.prices.usd.is_some(),
+                "Card {} should have a price",
+                card.name
             );
             assert!(
                 count > 0,
