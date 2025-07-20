@@ -1,14 +1,18 @@
-use scryfall::search::prelude::*;
+use scryfall::{Card, search::prelude::*};
 
 #[tokio::main]
+#[cfg(not(tarpaulin_include))]
 async fn main() {
-    match find_cheapest_price("Mountainqq").await {
-        Some(price) => println!("The cheapest price for Mountain is: ${}", price),
+    match find_cheapest_printing("Mountainqq").await {
+        Some(card) => println!(
+            "The cheapest price for Mountain is: ${}",
+            card.prices.usd.unwrap().parse::<f64>().unwrap()
+        ),
         None => println!("No price found for Mountain"),
     }
 }
 
-async fn find_cheapest_price(card_name: &str) -> Option<f64> {
+async fn find_cheapest_printing(card_name: &str) -> Option<Card> {
     let query = Query::And(vec![
         exact(card_name),
         not(PrintingIs::Digital),
@@ -22,12 +26,9 @@ async fn find_cheapest_price(card_name: &str) -> Option<f64> {
         .unique(UniqueStrategy::Prints);
 
     let mut results = search_options.search().await.ok()?;
-    match results.next().await?.unwrap().prices.usd {
-        Some(price) => match price.parse::<f64>() {
-            Ok(price) => Some(price),
-            Err(_) => None,
-        },
-        None => None,
+    match results.next().await {
+        Some(Ok(card)) => Some(card),
+        _ => None,
     }
 }
 
@@ -36,15 +37,18 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_find_cheapest_price() {
-        let price = find_cheapest_price("mountain").await;
-        assert!(price.is_some());
-        assert!(price.unwrap() > 0.0);
+    async fn test_find_cheapest_printing() {
+        let printing = find_cheapest_printing("mountain").await;
+        assert!(printing.is_some());
+        match printing {
+            Some(card) => assert!(card.prices.usd.unwrap().parse::<f64>().unwrap() > 0.0),
+            None => panic!("Expected a price for the card"),
+        }
     }
 
     #[tokio::test]
-    async fn test_find_cheapest_price_nonexistent() {
-        let price = find_cheapest_price("NonExistentCard").await;
-        assert!(price.is_none());
+    async fn test_find_cheapest_printing_nonexistent() {
+        let printing = find_cheapest_printing("NonExistentCard").await;
+        assert!(printing.is_none());
     }
 }
