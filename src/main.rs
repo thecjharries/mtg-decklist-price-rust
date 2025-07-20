@@ -1,7 +1,12 @@
+use governor::{Quota, RateLimiter};
+use lazy_static::lazy_static;
+use regex::Regex;
 use scryfall::{Card, Error, search::prelude::*};
+use std::time::Duration;
 
-lazy_static::lazy_static! {
-    static ref CARD_NAME_PATTERN: regex::Regex = regex::Regex::new(r"(?i)^(?P<count>\d+)\s+(?P<name>.+?)\s*?$").unwrap();
+lazy_static! {
+    static ref CARD_NAME_PATTERN: Regex =
+        Regex::new(r"(?i)^(?P<count>\d+)\s+(?P<name>.+?)\s*?$").unwrap();
 }
 
 #[tokio::main]
@@ -70,7 +75,9 @@ async fn find_cheapest_printing_of_list(
     cards: Vec<(u32, String)>,
 ) -> Result<Vec<(u32, Card)>, Error> {
     let mut cheapest_cards = Vec::new();
+    let rate_limiter = RateLimiter::direct(Quota::with_period(Duration::from_millis(500)).unwrap());
     for (count, card_name) in cards {
+        rate_limiter.until_ready().await;
         match find_cheapest_printing(&card_name).await {
             Ok(card) => {
                 cheapest_cards.push((count, card));
@@ -87,7 +94,6 @@ async fn build_decklist(raw_card_list: String) -> Result<Vec<(u32, Card)>, Error
     let sorted_cards = sort_raw_card_list(raw_card_list);
     let entries: Vec<&str> = sorted_cards.iter().map(|s| s.as_str()).collect();
     let valid_entries = validate_card_list(&entries).map_err(|err| Error::Other(err))?;
-
     find_cheapest_printing_of_list(valid_entries).await
 }
 
