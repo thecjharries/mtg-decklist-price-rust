@@ -1,4 +1,4 @@
-use scryfall::{Card, search::prelude::*};
+use scryfall::{Card, Error, search::prelude::*};
 
 lazy_static::lazy_static! {
     static ref CARD_NAME_PATTERN: regex::Regex = regex::Regex::new(r"(?i)^(?P<count>\d+)\s+(?P<name>.+?)\s*?$").unwrap();
@@ -7,13 +7,7 @@ lazy_static::lazy_static! {
 #[tokio::main]
 #[cfg(not(tarpaulin_include))]
 async fn main() {
-    match find_cheapest_printing("Mountainqq").await {
-        Some(card) => println!(
-            "The cheapest price for Mountain is: ${}",
-            card.prices.usd.unwrap().parse::<f64>().unwrap()
-        ),
-        None => println!("No price found for Mountain"),
-    }
+    print!("whoops")
 }
 
 fn sort_raw_card_list(cards: String) -> Vec<String> {
@@ -52,7 +46,7 @@ fn validate_card_list(entries: &[&str]) -> Result<Vec<(u32, String)>, String> {
     Ok(valid_entries)
 }
 
-async fn find_cheapest_printing(card_name: &str) -> Option<Card> {
+async fn find_cheapest_printing(card_name: &str) -> Result<Card, Error> {
     let query = Query::And(vec![
         exact(card_name),
         not(PrintingIs::Digital),
@@ -65,12 +59,24 @@ async fn find_cheapest_printing(card_name: &str) -> Option<Card> {
         .variations(false)
         .unique(UniqueStrategy::Prints);
 
-    let mut results = search_options.search().await.ok()?;
+    let mut results = search_options.search().await?;
     match results.next().await {
-        Some(Ok(card)) => Some(card),
-        _ => None,
+        Some(card) => card,
+        None => Err(Error::Other(format!("No price found for {}", card_name))),
     }
 }
+
+// async fn find_cheapest_printing_of_list(cards: Vec<(u32, String)>) -> Result<Vec<Card>, Error> {
+//     let mut cheapest_cards = Vec::new();
+//     for (count, name) in cards {
+//         if let Some(card) = find_cheapest_printing(&name).await {
+//             cheapest_cards.push(card);
+//         } else {
+//             return Err(Error::NotFound(format!("No price found for {}", name)));
+//         }
+//     }
+//     Ok(cheapest_cards)
+// }
 
 #[cfg(test)]
 mod tests {
@@ -79,17 +85,17 @@ mod tests {
     #[tokio::test]
     async fn test_find_cheapest_printing() {
         let printing = find_cheapest_printing("mountain").await;
-        assert!(printing.is_some());
+        assert!(printing.is_ok());
         match printing {
-            Some(card) => assert!(card.prices.usd.unwrap().parse::<f64>().unwrap() > 0.0),
-            None => panic!("Expected a price for the card"),
+            Ok(card) => assert!(card.prices.usd.unwrap().parse::<f64>().unwrap() > 0.0),
+            Err(_) => panic!("Expected a price for the card"),
         }
     }
 
     #[tokio::test]
     async fn test_find_cheapest_printing_nonexistent() {
         let printing = find_cheapest_printing("NonExistentCard").await;
-        assert!(printing.is_none());
+        assert!(printing.is_err());
     }
 
     #[test]
