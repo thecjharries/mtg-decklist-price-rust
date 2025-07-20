@@ -66,17 +66,22 @@ async fn find_cheapest_printing(card_name: &str) -> Result<Card, Error> {
     }
 }
 
-// async fn find_cheapest_printing_of_list(cards: Vec<(u32, String)>) -> Result<Vec<Card>, Error> {
-//     let mut cheapest_cards = Vec::new();
-//     for (count, name) in cards {
-//         if let Some(card) = find_cheapest_printing(&name).await {
-//             cheapest_cards.push(card);
-//         } else {
-//             return Err(Error::NotFound(format!("No price found for {}", name)));
-//         }
-//     }
-//     Ok(cheapest_cards)
-// }
+async fn find_cheapest_printing_of_list(
+    cards: Vec<(u32, String)>,
+) -> Result<Vec<(u32, Card)>, Error> {
+    let mut cheapest_cards = Vec::new();
+    for (count, card_name) in cards {
+        match find_cheapest_printing(&card_name).await {
+            Ok(card) => {
+                cheapest_cards.push((count, card));
+            }
+            Err(err) => {
+                eprintln!("Error finding card {}: {}", card_name, err);
+            }
+        }
+    }
+    Ok(cheapest_cards)
+}
 
 #[cfg(test)]
 mod tests {
@@ -353,5 +358,39 @@ mod tests {
         let invalid_entries = vec!["3 Mountain", "Island", "1 Plains"];
         let result = validate_card_list(&invalid_entries);
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_find_cheapest_printing_of_list() {
+        let cards = vec![
+            (3, "Mountain".to_string()),
+            (2, "Island".to_string()),
+            (1, "Plains".to_string()),
+        ];
+        let result = find_cheapest_printing_of_list(cards).await;
+        assert!(result.is_ok());
+        let cheapest_cards = result.unwrap();
+        assert_eq!(cheapest_cards.len(), 3);
+        for (count, card) in cheapest_cards {
+            assert!(
+                card.prices.usd.is_some(),
+                "Card {} should have a price",
+                card.name
+            );
+            assert!(
+                card.prices.usd.unwrap().parse::<f64>().unwrap() > 0.0,
+                "Card {} should have a positive price",
+                card.name
+            );
+            assert!(
+                vec!["Mountain", "Island", "Plains"].contains(&card.name.as_str()),
+                "Card name should be one of the expected names"
+            );
+            assert!(
+                count > 0,
+                "Count should be greater than 0 for card {}",
+                card.name
+            );
+        }
     }
 }
