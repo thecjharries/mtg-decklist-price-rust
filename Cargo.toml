@@ -6,3 +6,6 @@ edition = "2024"
 [dependencies]
 scryfall = "0.21.0"
 tokio = { version = "1.45.1", features = ["rt-multi-thread", "macros"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
