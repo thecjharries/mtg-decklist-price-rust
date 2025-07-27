@@ -3,6 +3,8 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use scryfall::{Card, Error, search::prelude::*};
 use simple_logger::SimpleLogger;
+use std::fs::File;
+use std::io::Read;
 use std::{num::NonZero, time::Duration};
 
 lazy_static! {
@@ -15,6 +17,13 @@ lazy_static! {
 async fn main() {
     SimpleLogger::new().init().unwrap();
     print!("whoops");
+}
+
+fn read_list_from_file(file_path: &str) -> Result<String, std::io::Error> {
+    let mut file = File::open(file_path)?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    Ok(contents.trim().to_string())
 }
 
 fn sort_raw_card_list(cards: String) -> Vec<String> {
@@ -119,6 +128,16 @@ fn compute_decklist_price(decklist: &[(u32, Card)]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_read_list_from_file() {
+        use std::path::Path;
+        let file_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("test/sample_decklist.txt");
+        let result = read_list_from_file(file_path.to_str().unwrap_or(""));
+        assert!(result.is_ok());
+        let contents = result.unwrap();
+        assert!(!contents.is_empty());
+    }
 
     #[tokio::test]
     async fn test_find_cheapest_printing() {
