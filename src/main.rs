@@ -2,7 +2,10 @@ use governor::{Quota, RateLimiter};
 use lazy_static::lazy_static;
 use regex::Regex;
 use scryfall::{Card, Error, search::prelude::*};
-use std::time::Duration;
+use simple_logger::SimpleLogger;
+use std::fs::File;
+use std::io::Read;
+use std::{num::NonZero, time::Duration};
 
 lazy_static! {
     static ref CARD_NAME_PATTERN: Regex =
@@ -12,7 +15,15 @@ lazy_static! {
 #[tokio::main]
 #[cfg(not(tarpaulin_include))]
 async fn main() {
-    print!("whoops")
+    SimpleLogger::new().init().unwrap();
+    print!("whoops");
+}
+
+fn read_list_from_file(file_path: &str) -> Result<String, std::io::Error> {
+    let mut file = File::open(file_path)?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    Ok(contents.trim().to_string())
 }
 
 fn sort_raw_card_list(cards: String) -> Vec<String> {
@@ -52,6 +63,7 @@ fn validate_card_list(entries: &[&str]) -> Result<Vec<(u32, String)>, String> {
 }
 
 async fn find_cheapest_printing(card_name: &str) -> Result<Card, Error> {
+    // log::trace!("Searching for cheapest printing of: {}", card_name);
     let query = Query::And(vec![
         exact(card_name),
         not(PrintingIs::Digital),
@@ -76,8 +88,11 @@ async fn find_cheapest_printing_of_list(
     rate_milliseconds: u64,
 ) -> Result<Vec<(u32, Card)>, Error> {
     let mut cheapest_cards = Vec::new();
-    let rate_limiter =
-        RateLimiter::direct(Quota::with_period(Duration::from_millis(rate_milliseconds)).unwrap());
+    let rate_limiter = RateLimiter::direct(
+        Quota::with_period(Duration::from_millis(rate_milliseconds))
+            .unwrap()
+            .allow_burst(NonZero::new(1).unwrap()),
+    );
     for (count, card_name) in cards {
         rate_limiter.until_ready().await;
         match find_cheapest_printing(&card_name).await {
@@ -92,7 +107,10 @@ async fn find_cheapest_printing_of_list(
     Ok(cheapest_cards)
 }
 
-async fn build_decklist(raw_card_list: String, rate_milliseconds: u64) -> Result<Vec<(u32, Card)>, Error> {
+async fn build_decklist(
+    raw_card_list: String,
+    rate_milliseconds: u64,
+) -> Result<Vec<(u32, Card)>, Error> {
     let sorted_cards = sort_raw_card_list(raw_card_list);
     let entries: Vec<&str> = sorted_cards.iter().map(|s| s.as_str()).collect();
     let valid_entries = validate_card_list(&entries).map_err(|err| Error::Other(err))?;
@@ -110,6 +128,16 @@ fn compute_decklist_price(decklist: &[(u32, Card)]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_read_list_from_file() {
+        use std::path::Path;
+        let file_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("test/sample_decklist.txt");
+        let result = read_list_from_file(file_path.to_str().unwrap_or(""));
+        assert!(result.is_ok());
+        let contents = result.unwrap();
+        assert!(!contents.is_empty());
+    }
 
     #[tokio::test]
     async fn test_find_cheapest_printing() {

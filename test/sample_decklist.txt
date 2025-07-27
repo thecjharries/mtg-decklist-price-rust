@@ -1,0 +1,75 @@
+1 Arbor Elf
+1 Archon of Emeria
+1 Archon of Valor's Reach
+1 Avacyn's Pilgrim
+1 Aven Mindcensor
+1 Bastion Protector
+1 Beast Within
+1 Boromir, Warden of the Tower
+1 Bridgeworks Battle
+1 Bulwark Ox
+1 Cankerbloom
+1 Canopy Vista
+1 Collective Effort
+1 Collective Resistance
+1 Collector Ouphe
+1 Command Tower
+1 Containment Priest
+1 Cursed Totem
+1 Dauntless Dismantler
+1 Demolition Field
+1 Doorkeeper Thrull
+1 Eidolon of Rhetoric
+1 Ellivere of the Wild Court
+1 Elvish Mystic
+1 Evolution Witness
+1 Fauna Shaman
+1 Felidar Retreat
+15 Forest
+1 Fortified Village
+1 Fyndhorn Elves
+1 Gavony Township
+1 Hopeful Initiate
+1 Horn of the Mark
+1 Hushbringer
+1 Hushwing Gryff
+1 Kabira Takedown
+1 Kataki, War's Wage
+1 Llanowar Elves
+1 Loyal Guardian
+1 Luminarch Aspirant
+1 Makindi Stampede
+1 Managorger Hydra
+1 Manglehorn
+1 Ohran Frostfang
+1 Ornery Tumblewagg
+1 Overwhelming Stampede
+1 Paladin Class
+1 Phyrexian Censor
+1 Phyrexian Revoker
+13 Plains
+1 Requisition Raid
+1 Rest in Peace
+1 Restless Prairie
+1 Rule of Law
+1 Scavenger Grounds
+1 Scavenging Ooze
+1 Selfless Spirit
+1 Shalai, Voice of Plenty
+1 Siege Veteran
+1 Skyhunter Strike Force
+1 Strict Proctor
+1 Swiftfoot Boots
+1 Swords to Plowshares
+1 Tadeas, Juniper Ascendant
+1 Thunderfoot Baloth
+1 Tocatli Honor Guard
+1 Tyrant Guard
+1 Unbreakable Formation
+1 Utopia Sprawl
+1 Vastwood Fortification
+1 Weathered Runestone
+1 Wild Growth
+1 Windborn Muse
+
+1 Kutzil, Malamet Exemplar
